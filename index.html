@@ -214,17 +214,39 @@ function buildKML(){
     `<description>ESCAP (1991) Geological / Mineral Resources Map of Myanmar 1:1,500,000, vectorised 2026. Positional accuracy +/-0.5-1.5 km.</description>`+
     parts.join('')+`</Document></kml>`;
 }
+// minimal ZIP (stored, no compression) for one file
+const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRCT[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function zipStore(name,data){
+  const nm=new TextEncoder().encode(name), crc=crc32(data), n=data.length;
+  const lh=new DataView(new ArrayBuffer(30)); [[0,0x04034b50,4],[4,20,2],[6,0x0800,2],[8,0,2],[10,0,2],[12,0x21,2],[14,crc,4],[18,n,4],[22,n,4],[26,nm.length,2],[28,0,2]].forEach(([o,v,l])=>l===4?lh.setUint32(o,v,true):lh.setUint16(o,v,true));
+  const ch=new DataView(new ArrayBuffer(46)); [[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0800,2],[10,0,2],[12,0,2],[14,0x21,2],[16,crc,4],[20,n,4],[24,n,4],[28,nm.length,2],[30,0,2],[32,0,2],[34,0,2],[36,0,2],[38,0,4],[42,0,4]].forEach(([o,v,l])=>l===4?ch.setUint32(o,v,true):ch.setUint16(o,v,true));
+  const cdOff=30+nm.length+n, cdLen=46+nm.length;
+  const ed=new DataView(new ArrayBuffer(22)); [[0,0x06054b50,4],[4,0,2],[6,0,2],[8,1,2],[10,1,2],[12,cdLen,4],[16,cdOff,4],[20,0,2]].forEach(([o,v,l])=>l===4?ed.setUint32(o,v,true):ed.setUint16(o,v,true));
+  return new Blob([lh,nm,data,ch,nm,ed]);
+}
 const Exp=L.Control.extend({options:{position:'bottomleft'},onAdd(){
   const w=L.DomUtil.create('div');L.DomEvent.disableClickPropagation(w);
   const b=L.DomUtil.create('button','btn',w);b.textContent='ส่งออกไป Google Earth (KML)';b.title='ส่งออกชั้นที่เปิดอยู่เป็นไฟล์ .kml';
   const msg=L.DomUtil.create('div','bmwarn',w);msg.hidden=true;
-  b.onclick=()=>{
-    const kml=buildKML(); const blob=new Blob([kml],{type:'application/vnd.google-earth.kml+xml'});
+  // claude.ai viewer: files go through the downloads capability, which takes .zip (not .kml) -> zip with the .kml inside
+  let dlP=null; try{ if(window.claude&&window.claude.use) dlP=window.claude.use('downloads'); }catch(e){}
+  b.onclick=async()=>{
+    const kml=buildKML(); const mb=(new Blob([kml]).size/1048576).toFixed(1);
+    const dl=dlP?await dlP:null;
+    msg.hidden=false;
+    if(dl){
+      const zip=zipStore('shan_escap_geology.kml',new TextEncoder().encode(kml));
+      try{ await dl.save({filename:'shan_escap_geology_kml.zip',data:new Blob([zip])});
+        msg.innerHTML=`บันทึกแล้ว (KML ${mb} MB ใน zip) — แตกไฟล์ zip แล้วเปิด <b>shan_escap_geology.kml</b> ใน Google Earth`;
+      }catch(e){ msg.innerHTML=e&&e.code==='declined'?'ยกเลิกการบันทึกแล้ว':
+        `บันทึกไฟล์ในหน้านี้ไม่ได้ (${kx(e&&e.code||'error')}) — <a href="${PUBLIC_URL}" target="_blank" rel="noopener">เปิดเวอร์ชันที่ส่งออกได้ ↗</a>`; }
+      return;
+    }
+    const blob=new Blob([kml],{type:'application/vnd.google-earth.kml+xml'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shan_escap_geology.kml';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-    msg.hidden=false;
-    msg.innerHTML=`สร้างไฟล์ ${(blob.size/1048576).toFixed(1)} MB แล้ว — เปิดใน Google Earth Pro หรือลากไฟล์ไปที่ earth.google.com`+
-      (inFrame?`<br>ถ้าไม่มีไฟล์ดาวน์โหลด แสดงว่าหน้านี้ (claude.ai) บล็อกการดาวน์โหลด <a href="${PUBLIC_URL}" target="_blank" rel="noopener">เปิดเวอร์ชันที่ส่งออกได้ ↗</a>`:'');
+    msg.innerHTML=`สร้างไฟล์ shan_escap_geology.kml (${mb} MB) แล้ว — เปิดใน Google Earth Pro หรือนำเข้าที่ earth.google.com`;
   };
   return w;}});
 new Exp().addTo(map);
