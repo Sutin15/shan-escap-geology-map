@@ -176,6 +176,59 @@ const Leg=L.Control.extend({options:{position:'bottomleft'},onAdd(){
   h+='<div class="row"><span style="width:14px;border-top:2px solid #000;margin-top:8px"></span>Fault / lineament</div><div class="row"><span style="width:14px;border-top:2px solid #8b0000;margin-top:8px"></span>Thrust (verify)</div>';
   p.innerHTML=h; b.onclick=()=>{p.style.display=p.style.display==='block'?'none':'block'}; return w;}});
 new Leg().addTo(map);
+// ---------------- export to Google Earth (KML) - layers currently switched on
+const PUBLIC_URL='https://sutin15.github.io/shan-escap-geology-map/';
+const inFrame=(()=>{try{return window.self!==window.top}catch(e){return true}})() && /claude/.test(document.referrer+location.ancestorOrigins?.[0]);
+const kx=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kcol=(hex,a)=>{const h=(hex||'#888888').replace('#','');return a+h.slice(4,6)+h.slice(2,4)+h.slice(0,2)};
+const ring=r=>r.map(c=>c[0].toFixed(5)+','+c[1].toFixed(5)).join(' ');
+function kGeom(g){
+  const poly=p=>`<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(p[0])}</coordinates></LinearRing></outerBoundaryIs>`+
+     p.slice(1).map(h=>`<innerBoundaryIs><LinearRing><coordinates>${ring(h)}</coordinates></LinearRing></innerBoundaryIs>`).join('')+`</Polygon>`;
+  if(g.type==='Point') return `<Point><coordinates>${g.coordinates[0]},${g.coordinates[1]}</coordinates></Point>`;
+  if(g.type==='LineString') return `<LineString><tessellate>1</tessellate><coordinates>${ring(g.coordinates)}</coordinates></LineString>`;
+  if(g.type==='MultiLineString') return `<MultiGeometry>${g.coordinates.map(l=>`<LineString><tessellate>1</tessellate><coordinates>${ring(l)}</coordinates></LineString>`).join('')}</MultiGeometry>`;
+  if(g.type==='Polygon') return poly(g.coordinates);
+  if(g.type==='MultiPolygon') return `<MultiGeometry>${g.coordinates.map(poly).join('')}</MultiGeometry>`;
+  return '';
+}
+const desc=p=>`<![CDATA[<table>${Object.entries(p).filter(([k,v])=>v!==null&&v!==''&&!/hex|fill/.test(k)).map(([k,v])=>`<tr><td><b>${kx(k)}</b></td><td>${kx(v)}</td></tr>`).join('')}</table>]]>`;
+function kFolder(name,feats,nameOf,styleOf){
+  return `<Folder><name>${kx(name)}</name>`+feats.map(f=>`<Placemark><name>${kx(nameOf(f.properties))}</name>${styleOf(f.properties)}<description>${desc(f.properties)}</description>${kGeom(f.geometry)}</Placemark>`).join('')+`</Folder>`;
+}
+function buildKML(){
+  const on=l=>map.hasLayer(l); const parts=[];
+  const op=Math.round(opacity*255).toString(16).padStart(2,'0');
+  const geo=GEO.features.filter(f=>geoLayers[f.properties.state]&&on(geoLayers[f.properties.state]));
+  if(geo.length) parts.push(kFolder('Geology (ESCAP 1991)',geo,p=>p.unit_code,p=>`<Style><PolyStyle><color>${kcol(p.fill_hex,op)}</color></PolyStyle><LineStyle><color>ff333333</color><width>0.5</width></LineStyle></Style>`));
+  if(on(strLayer)) parts.push(kFolder('Structures',STR.features,p=>p.struct_type,p=>`<Style><LineStyle><color>${p.struct_type.startsWith('Thrust')?'ff00008b':'ff000000'}</color><width>2</width></LineStyle></Style>`));
+  const pin=(hex,scale)=>`<Style><IconStyle><color>${kcol(hex,'ff')}</color><scale>${scale}</scale><Icon><href>https://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>`;
+  Object.keys(minLayers).forEach(g=>{ if(on(minLayers[g])) parts.push(kFolder('Minerals - '+GRP[g][0],MIN.features.filter(f=>f.properties.group===g),p=>p.commodity||GRP[g][0],p=>pin(COLM[g],1.0))); });
+  if(on(neighLayer)) parts.push(kFolder('Minerals outside Shan (<=80 km)',NEIGH.features,p=>p.commodity||p.group_en,p=>pin(COLM[p.group]||'#777777',0.8)));
+  if(on(minesLayer)) parts.push(kFolder('Numbered mines (ESCAP legend)',MINES.features,p=>p.mine_no+'. '+p.mine_name,p=>pin('#000000',1.2)));
+  if(on(spotLayer)) parts.push(kFolder('Spot heights',SPOT.features,p=>p.label||p.elev_m,p=>`<Style><IconStyle><scale>0.6</scale><Icon><href>https://maps.google.com/mapfiles/kml/shapes/triangle.png</href></Icon></IconStyle></Style>`));
+  if(on(townLayer)) parts.push(kFolder('Towns',TOWNS.features,p=>p.name,p=>pin('#ffffff',0.7)));
+  if(on(boundary)) parts.push(kFolder('Shan State boundary',SHAN.features,p=>p.state||p.ST,p=>`<Style><PolyStyle><fill>0</fill></PolyStyle><LineStyle><color>ff000000</color><width>2</width></LineStyle></Style>`));
+  if(on(s69)) parts.push(`<Folder><name>Project</name><Placemark><name>S69 / A01</name><description>Sn-W project, UTM 47N 474475 E / 2284584 N</description>${pin('#ff0000',1.3)}<Point><coordinates>98.754949,20.660404</coordinates></Point></Placemark></Folder>`);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Shan Geology ESCAP</name>`+
+    `<description>ESCAP (1991) Geological / Mineral Resources Map of Myanmar 1:1,500,000, vectorised 2026. Positional accuracy +/-0.5-1.5 km.</description>`+
+    parts.join('')+`</Document></kml>`;
+}
+const Exp=L.Control.extend({options:{position:'bottomleft'},onAdd(){
+  const w=L.DomUtil.create('div');L.DomEvent.disableClickPropagation(w);
+  const b=L.DomUtil.create('button','btn',w);b.textContent='ส่งออกไป Google Earth (KML)';b.title='ส่งออกชั้นที่เปิดอยู่เป็นไฟล์ .kml';
+  const msg=L.DomUtil.create('div','bmwarn',w);msg.hidden=true;
+  b.onclick=()=>{
+    const kml=buildKML(); const blob=new Blob([kml],{type:'application/vnd.google-earth.kml+xml'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shan_escap_geology.kml';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    msg.hidden=false;
+    msg.innerHTML=`สร้างไฟล์ ${(blob.size/1048576).toFixed(1)} MB แล้ว — เปิดใน Google Earth Pro หรือลากไฟล์ไปที่ earth.google.com`+
+      (inFrame?`<br>ถ้าไม่มีไฟล์ดาวน์โหลด แสดงว่าหน้านี้ (claude.ai) บล็อกการดาวน์โหลด <a href="${PUBLIC_URL}" target="_blank" rel="noopener">เปิดเวอร์ชันที่ส่งออกได้ ↗</a>`:'');
+  };
+  return w;}});
+new Exp().addTo(map);
+
 L.control.scale({imperial:false}).addTo(map);
 map.fitBounds(L.geoJSON(SHAN).getBounds());
 </script></body></html>
