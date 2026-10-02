@@ -27,6 +27,9 @@ header small{font-weight:400;opacity:.7;font-size:13px}
 .maplbl.spot{color:#5a2d0c;font-weight:400;font-size:11px}
 .maplbl:before{display:none}
 body.showlbl .maplbl{display:block}
+.bmbanner{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:1000;background:#7a4100;color:#fff;padding:7px 14px;border-radius:5px;font-size:13px;text-decoration:none;box-shadow:0 1px 5px rgba(0,0,0,.35);max-width:calc(100% - 140px);text-align:center}
+.bmwarn{margin-top:6px;padding:6px 8px;border-radius:4px;background:#fff4e5;color:#7a4100;font-size:12px;line-height:1.4;white-space:normal;max-width:240px}
+.bmwarn a{color:#0a58ca;font-weight:700}
 .note{font-size:11px;color:var(--muted);max-width:260px;white-space:normal}
 @media (max-width:640px){#layers{max-height:45vh;min-width:0}header{font-size:16px}}
 </style></head><body>
@@ -52,7 +55,9 @@ setBase('Esri Topo');
 let tileOk=false, tileErr=0;
 base['Esri Topo'].on('tileload',()=>{tileOk=true}); base['Esri Topo'].on('tileerror',()=>{tileErr++});
 setTimeout(()=>{ if(!tileOk && curBase==='Esri Topo'){ setBase('ESCAP ธรณี (สแกน)');
-  const n=document.getElementById('bmnote'); if(n) n.hidden=false; } },4000);
+  const n=document.getElementById('bmnote'); if(n) n.hidden=false;
+  const bn=document.createElement('a'); bn.href='https://sutin15.github.io/shan-escap-geology-map/'; bn.target='_blank'; bn.rel='noopener';
+  bn.textContent='แผนที่ฐาน Esri / OSM ใช้ไม่ได้ในหน้านี้ — กดเพื่อเปิดเวอร์ชันที่ใช้ได้ครบ ↗'; bn.className='bmbanner'; document.body.appendChild(bn); } },4000);
 map.attributionControl.addAttribution('Geology: ESCAP (1991) Geological / Mineral Resources Map of Myanmar 1:1.5M — vectorised 2026');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ma=m=>m&&m[0]!=null?` (${m[0]}–${m[1]} ล้านปี)`:'';
@@ -141,7 +146,8 @@ const Panel=L.Control.extend({options:{position:'topright'},onAdd(){
       <label><input type="checkbox" checked data-k="towns"> Towns</label><label><input type="checkbox" checked data-k="spot"> △ Spot heights (m / ft)</label>
       <label><input type="checkbox" checked data-k="s69"> S69 project point</label><h4>Base map</h4>`;
   Object.keys(base).forEach((b,i)=>h+=`<label><input type="radio" name="bm" ${b===curBase?'checked':''} data-b="${b}"> ${b}</label>`);
-  h+='<div id="bmnote" class="note" hidden>แผนที่ฐานออนไลน์ถูกบล็อกในหน้านี้ จึงใช้ภาพสแกน ESCAP แทน</div>';
+  h+='<div id="bmnote" class="bmwarn" hidden>หน้านี้ (claude.ai) บล็อกแผนที่ฐานออนไลน์ Esri / OSM จึงแสดงภาพสแกน ESCAP แทน<br>'+
+     '<a href="https://sutin15.github.io/shan-escap-geology-map/" target="_blank" rel="noopener">เปิดแผนที่ที่แผนที่ฐานใช้ได้ครบ ↗</a></div>';
   d.innerHTML=h+'</div>';
   const body=d.querySelector('#lbody'), tog=d.querySelector('#tog');
   const setOpen=o=>{body.style.display=o?'block':'none';tog.textContent=o?'Layers ▴':'Layers ▾'};
