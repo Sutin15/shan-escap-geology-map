@@ -27,6 +27,9 @@ header small{font-weight:400;opacity:.7;font-size:13px}
 .maplbl.spot{color:#5a2d0c;font-weight:400;font-size:11px}
 .maplbl:before{display:none}
 body.showlbl .maplbl{display:block}
+.dlpanel{margin:4px 0;max-width:270px;font-size:13px}
+.dlrow{padding:5px 0;border-bottom:1px solid var(--line)}
+.dlbtn{display:inline-block;margin:4px 4px 0 0;padding:3px 10px;border-radius:4px;background:#0a58ca;color:#fff!important;font-weight:700;text-decoration:none;font-size:12px}
 .bmbanner{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:1000;background:#7a4100;color:#fff;padding:7px 14px;border-radius:5px;font-size:13px;text-decoration:none;box-shadow:0 1px 5px rgba(0,0,0,.35);max-width:calc(100% - 140px);text-align:center}
 .bmwarn{margin-top:6px;padding:6px 8px;border-radius:4px;background:#fff4e5;color:#7a4100;font-size:12px;line-height:1.4;white-space:normal;max-width:240px}
 .bmwarn a{color:#0a58ca;font-weight:700}
@@ -226,8 +229,19 @@ function zipStore(name,data){
   return new Blob([lh,nm,data,ch,nm,ed]);
 }
 const Exp=L.Control.extend({options:{position:'bottomleft'},onAdd(){
-  const w=L.DomUtil.create('div');L.DomEvent.disableClickPropagation(w);
-  const b=L.DomUtil.create('button','btn',w);b.textContent='ส่งออกไป Google Earth (KML)';b.title='ส่งออกชั้นที่เปิดอยู่เป็นไฟล์ .kml';
+  const w=L.DomUtil.create('div');L.DomEvent.disableClickPropagation(w);L.DomEvent.disableScrollPropagation(w);
+  // ready-made Google Earth files, split by source sheet; each carries its scan as a ground overlay
+  const tg=L.DomUtil.create('button','btn',w);tg.textContent='ดาวน์โหลด Google Earth ▾';
+  const pn=L.DomUtil.create('div','panel dlpanel',w);pn.hidden=true;
+  const base=inFrame?PUBLIC_URL:'';   // the claude.ai frame cannot hand out files: link to the public copies
+  const F=[['ESCAP ธรณี (สแกน)','หน่วยหิน · รอยเลื่อน · จุดความสูง + ภาพสแกนแผ่นธรณี','Shan_ESCAP_Geology'],
+           ['ESCAP แหล่งแร่ (สแกน)','จุดแร่ · เหมืองหมายเลข · เมือง + ภาพสแกนแผ่นแหล่งแร่','Shan_ESCAP_Minerals']];
+  pn.innerHTML=F.map(([t,d,f])=>`<div class="dlrow"><b>${t}</b><div class="note">${d}</div>`+
+     `<a class="dlbtn" href="${base}${f}.kmz" download>KMZ</a> <a class="dlbtn" href="${base}${f}.kml" download>KML</a></div>`).join('')+
+     `<div class="dlrow"><b>รวมทุกชั้น</b> <span class="note">(ไม่มีภาพสแกน)</span><br><a class="dlbtn" href="${base}Shan_ESCAP_GoogleEarth.kmz" download>KMZ</a></div>`+
+     `<div class="note">KMZ = ไฟล์เดียวครบ ใช้ออฟไลน์ได้ · KML = ไฟล์ข้อความ ภาพสแกนโหลดจากเว็บ (ต้องต่อเน็ต)</div>`;
+  tg.onclick=()=>{pn.hidden=!pn.hidden;tg.textContent=pn.hidden?'ดาวน์โหลด Google Earth ▾':'ดาวน์โหลด Google Earth ▴'};
+  const b=L.DomUtil.create('button','btn',w);b.textContent='ส่งออกชั้นที่เปิดอยู่ (KML)';b.title='ส่งออกเฉพาะชั้นที่เปิดอยู่ในแผง Layers เป็นไฟล์ .kml';b.style.marginTop='4px';b.style.display='block';
   const msg=L.DomUtil.create('div','bmwarn',w);msg.hidden=true;
   // claude.ai viewer: files go through the downloads capability, which takes .zip (not .kml) -> zip with the .kml inside
   let dlP=null; try{ if(window.claude&&window.claude.use) dlP=window.claude.use('downloads'); }catch(e){}
